@@ -1,0 +1,31 @@
+---
+
+#Actifio Appliance
+act_appliance: ''
+
+# Actifio Username
+act_user: admin
+
+# Password
+act_pass: password
+
+# VendorKey, this can be requested from the Customer Success Engineering team via a case.
+act_vendorkey: ''
+
+# Target Application or VM Name
+act_appname: ''
+
+# Host Name of the Target Application
+act_hostname: ''
+
+# ESXi Host Name of the Target VM 
+act_esxhost: ''
+
+# Backup Image Label
+act_imagelabel: 'Ansible_Playbook'
+
+# Backup Type (db/log/dblog) for DB App
+act_backuptype: ''
+
+# Policy Name Used for the Backup
+act_policyname: ''

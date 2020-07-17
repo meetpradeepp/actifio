@@ -1,0 +1,130 @@
+---
+
+# Pre-FLight check for variable consistency
+- fail:
+    msg: the variable "{{ item }}" should be defined.
+  when: item == ''
+  with_items:
+    - "{{ act_appname }}"
+    - "{{ act_vendorkey }}"
+
+# Generate a login token using the username, password and vendorkey
+- name: generating authentication token
+  uri:
+    url: "{{ act_api_login }}"
+    validate_certs: no
+  register: logintoken
+
+- name: session id is a fact
+  set_fact:
+    act_sessionid: "{{ logintoken.json.sessionid }}"
+
+# APP or VM
+- name: set parameters of lsapplication for APP
+  set_fact:  
+    hostname: "{{ act_hostname }}"
+  when: act_hostname != ''
+
+- name: set parameters of lsapplication for VM
+  set_fact:  
+    hostname: "{{ act_esxhost }}"
+  when: act_esxhost != ''
+
+# try to ascertain the host ID
+- name: search for host_id from hostname
+  uri:
+    url: "{{ act_api_info }}/lshost?sessionid={{ act_sessionid }}&filtervalue=hostname={{ hostname }}"
+    validate_certs: no
+  register: hostid
+    
+- name: host id is a fact
+  set_fact:
+    host_id: "{{ hostid.json.result.0.id }}"
+  when: hostid is defined
+
+# Fail if the host could not be found
+- name: fail when the target host cannot be found
+  fail:
+    msg: "Unable to find a hostID with a matching description" 
+  when: host_id == ''
+
+# APP or VM
+- name: set parameters of lsapplication for APP
+  set_fact:  
+    hostfilter: '&hostid='
+    hostvalue: "{{ host_id }}"
+  when: act_hostname != ''
+
+- name: set parameters of lsapplication for VM
+  set_fact:  
+    hostfilter: '&auxinfo='
+    hostvalue: "{{ act_esxhost }}"
+  when: act_esxhost != ''
+
+# Filte out the applicationid based on the application_name and source_host
+- name: get the application id 
+  uri:
+    url: "{{ act_api_info }}/lsapplication?sessionid={{ act_sessionid }}&filtervalue={{ 'appname=' | urlencode }}{{ act_appname | urlencode }}{{ hostfilter | urlencode }}{{ hostvalue }}"
+    validate_certs: no
+    method: GET
+  register: lsapplication
+
+# Filter out the sltid based on the applicationid
+- name: get the slt id
+  uri:
+    url: "{{ act_api_info }}/lssla?sessionid={{ act_sessionid }}&filtervalue={{ 'appid=' | urlencode }}{{ lsapplication.json.result[0].id }}"
+    validate_certs: no
+    method: GET
+  register: lssla  
+
+# Fail if the sla could not be found
+- name: fail when the sla cannot be found
+  fail:
+    msg: "Unable to find SLA ID with a matching application ID" 
+  when: lssla == ''
+
+# Filter out the policy based on the applicationid
+- name: get the policy ids
+  uri:
+    url: "{{ act_api_info }}/lspolicy?sessionid={{ act_sessionid }}&filtervalue={{ 'sltid=' | urlencode }}{{ lssla.json.result[0].sltid }}"
+    validate_certs: no
+    method: GET
+  register: lspolicy  
+
+# Issue ondemand backup
+- name: issue ondemand backup
+  uri:
+    url: "{{ act_api_task}}/backup?app={{ lsapplication.json.result[0].id }}&policy={{ lspolicy | get_policy_id (act_policyname) }}&backuptype={{ act_backuptype }}&label={{ act_imagelabel | urlencode }}&sessionid={{ act_sessionid }}"
+    validate_certs: no
+    method: POST
+  register: backup
+
+# Fail if job status not equal zero
+- fail:
+    msg: The backup job failed with status "{{ backup.json.status }}".
+  when: backup.json.status != 0
+
+# Set fact job_id
+- name: set fact job_id
+  set_fact:
+    job_id: "{{ backup.json.result }}"
+
+# Pause
+- pause: seconds=60
+
+# Loop lsjobhistory until finding the job
+- name: loop lsjobhistory until finding the job
+  uri:
+    url: "{{ act_api_info }}/lsjobhistory?sessionid={{ act_sessionid }}&filtervalue={{ 'jobname=' | urlencode }}{{ job_id }}"
+    validate_certs: no
+    method: GET
+  register: lsjobhistory  
+  until: lsjobhistory.json.result != [] 
+  retries: 100
+  delay: 30
+
+# Fail if the job status was not succeeded
+- fail:
+    msg "the {{ job_id }} was queued or not succeeded"
+  when: lsjobhistory.json.result[0].status != 'succeeded'
+
