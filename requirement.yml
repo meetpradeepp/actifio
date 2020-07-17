@@ -1,0 +1,2 @@
+- src: Actifio.ansible_newvm_mount
+  name: ansible_newvm_mount

@@ -1,0 +1,11 @@
+---
+- name: actifio on demand backup
+  hosts: "{{ host_group }}"
+  become: yes
+  become_method: sudo
+  roles:
+    - { role: ansible_ondemand_backup, act_appliance: my-actifio, act_user: ansible, act_pass: mypassword }
+  vars:
+    act_vendorkey: "{{ contact CSE to get yours }}"
+    act_appname: "TargetApp"
+    act_hostname: "TargetHost"
